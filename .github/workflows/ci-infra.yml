@@ -1,0 +1,61 @@
+name: CI/CD - Infrastructure
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  validate:
+    name: Validate Docker Compose
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate docker-compose.yml
+        run: docker compose config
+
+      - name: Check for syntax errors
+        run: |
+          docker compose config --quiet
+          echo "Docker Compose config is valid"
+
+  test:
+    name: Test Services
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Start services
+        run: |
+          docker compose up -d
+          sleep 10
+
+      - name: Check PostgreSQL
+        run: |
+          docker compose exec -T postgres pg_isready -U sovalune -d sovalune
+
+      - name: Check NATS
+        run: |
+          curl -f http://localhost:8222/healthz || exit 1
+
+      - name: Stop services
+        if: always()
+        run: docker compose down -v
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Lint docker-compose.yml
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: Dockerfile
+        continue-on-error: true

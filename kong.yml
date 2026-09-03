@@ -1,0 +1,61 @@
+_format_version: "1.1"
+_transform: true
+
+consumers:
+  - username: anon
+    keyauth:
+      - key: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjogImFub24iLCAiaXNzIjogInN1cGFiYXNlIiwiaWF0IjogMTY5MDAwMDAwMH0.placeholder
+  - username: service_role
+    keyauth:
+      - key: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjogInNlcnZpY2Vfcm9sZSIsICJpc3MiOiAic3VwYWJhc2UiLCAiaWF0IjogMTY5MDAwMDAwMH0.placeholder
+
+acls:
+  - consumer: anon
+    group: anon
+  - consumer: service_role
+    group: admin
+
+services:
+  - name: auth-v1-open
+    url: http://auth:9999/verify
+    routes:
+      - name: auth-v1-open
+        paths:
+          - /auth/v1/verify
+        strip_path: true
+        methods:
+          - POST
+          - GET
+  - name: auth-v1
+    url: http://auth:9999/
+    routes:
+      - name: auth-v1
+        paths:
+          - /auth/v1/
+        strip_path: true
+        plugins:
+          - name: key-auth
+            config:
+              hide_credentials: false
+  - name: rest-v1
+    url: http://api:3000/
+    routes:
+      - name: rest-v1
+        paths:
+          - /rest/v1/
+        strip_path: true
+        plugins:
+          - name: key-auth
+            config:
+              hide_credentials: false
+  - name: storage-v1
+    url: http://storage:5000/
+    routes:
+      - name: storage-v1
+        paths:
+          - /storage/v1/
+        strip_path: true
+        plugins:
+          - name: key-auth
+            config:
+              hide_credentials: false

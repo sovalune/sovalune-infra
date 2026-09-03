@@ -1,0 +1,210 @@
+version: "3.8"
+
+services:
+  # ============================================================
+  # Sovalune Storage — Supabase Postgres + pgvector
+  # ============================================================
+  postgres:
+    image: supabase/postgres:15.6.1
+    container_name: sovalune-postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: sovalune
+      POSTGRES_USER: sovalune
+      POSTGRES_PASSWORD: sovalune_dev_password
+      POSTGRES_PORT: 5432
+      JWT_SECRET: your-super-secret-jwt-token-with-at-least-32-characters-long
+      ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjogImFub24iLCAiaXNzIjogInN1cGFiYXNlIiwiaWF0IjogMTY5MDAwMDAwMH0.placeholder
+      SERVICE_ROLE_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjogInNlcnZpY2Vfcm9sZSIsICJpc3MiOiAic3VwYWJhc2UiLCAiaWF0IjogMTY5MDAwMDAwMH0.placeholder
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "sovalune", "-d", "sovalune"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - sovalune-network
+
+  # ============================================================
+  # Sovalune Vector — pgvector extension (included in postgres image)
+  # ============================================================
+
+  # ============================================================
+  # NATS — Message bus with JetStream
+  # ============================================================
+  nats:
+    image: nats:2.10-alpine
+    container_name: sovalune-nats
+    restart: unless-stopped
+    ports:
+      - "4222:4222"
+      - "8222:8222"
+    command: ["--jetstream", "--store_dir", "/data", "-m", "8222"]
+    volumes:
+      - nats_data:/data
+    healthcheck:
+      test: ["CMD", "nats-server", "--signal", "ldm=nats"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - sovalune-network
+
+  # ============================================================
+  # Sovalune Studio — Supabase Studio (фиолетовая тема)
+  # ============================================================
+  studio:
+    image: supabase/studio:latest
+    container_name: sovalune-studio
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      STUDIO_DEFAULT_ORGANIZATION: Sovalune
+      STUDIO_DEFAULT_PROJECT: Sovalune Dev
+      SUPABASE_URL: http://localhost:8000
+      SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjogImFub24iLCAiaXNzIjogInN1cGFiYXNlIiwiaWF0IjogMTY5MDAwMDAwMH0.placeholder
+      SUPABASE_SERVICE_ROLE_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjogInNlcnZpY2Vfcm9sZSIsICJpc3MiOiAic3VwYWJhc2UiLCAiaWF0IjogMTY5MDAwMDAwMH0.placeholder
+    networks:
+      - sovalune-network
+
+  # ============================================================
+  # Sovalune API Gateway — PostgREST (Supabase Storage API)
+  # ============================================================
+  api:
+    image: postgrest/postgrest:v12.0.2
+    container_name: sovalune-api-gateway
+    restart: unless-stopped
+    ports:
+      - "8000:3000"
+    environment:
+      PGRST_DB_URI: postgres://sovalune:sovalune_dev_password@postgres:5432/sovalune
+      PGRST_DB_ANON_ROLE: anon
+      PGRST_DB_SCHEMAS: public,storage,graphql_public
+      PGRST_JWT_SECRET: your-super-secret-jwt-token-with-at-least-32-characters-long
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - sovalune-network
+
+  # ============================================================
+  # Sovalune Storage — Object Storage API
+  # ============================================================
+  storage:
+    image: supabase/storage-api:v1.11.13
+    container_name: sovalune-storage
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    environment:
+      ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjogImFub24iLCAiaXNzIjogInN1cGFiYXNlIiwiaWF0IjogMTY5MDAwMDAwMH0.placeholder
+      SERVICE_ROLE_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjogInNlcnZpY2Vfcm9sZSIsICJpc3MiOiAic3VwYWJhc2UiLCAiaWF0IjogMTY5MDAwMDAwMH0.placeholder
+      POSTGRES_URL: postgres://sovalune:sovalune_dev_password@postgres:5432/sovalune
+      PGRST_DB_SCHEMAS: storage
+      FILE_SIZE_LIMIT: 524288000
+      STORAGE_BACKEND: file
+      FILE_STORAGE_BACKEND_PATH: /var/lib/storage
+      IS_MULTITENANT: false
+    volumes:
+      - storage_data:/var/lib/storage
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - sovalune-network
+
+  # ============================================================
+  # Sovalune Auth — GoTrue (Supabase Auth, опционально)
+  # ============================================================
+  auth:
+    image: supabase/gotrue:v2.158.1
+    container_name: sovalune-auth
+    restart: unless-stopped
+    ports:
+      - "9999:9999"
+    environment:
+      GOTRUE_API_HOST: 0.0.0.0
+      GOTRUE_API_PORT: 9999
+      API_EXTERNAL_URL: http://localhost:9999
+      GOTRUE_DB_DATABASE_URL: postgres://sovalune:sovalune_dev_password@postgres:5432/sovalune
+      GOTRUE_DB_SCHEMA: auth
+      GOTRUE_JWT_SECRET: your-super-secret-jwt-token-with-at-least-32-characters-long
+      GOTRUE_JWT_EXP: 3600
+      GOTRUE_JWT_AUD: authenticated
+      GOTRUE_JWT_DEFAULT_GROUP_NAME: authenticated
+      GOTRUE_EXTERNAL_EMAIL_ENABLED: false
+      GOTRUE_EXTERNAL_PHONE_ENABLED: false
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - sovalune-network
+
+  # ============================================================
+  # Kong — API Gateway (Supabase)
+  # ============================================================
+  kong:
+    image: kong:2.8.1
+    container_name: sovalune-kong
+    restart: unless-stopped
+    ports:
+      - "8443:8443"
+      - "8080:8000"
+    environment:
+      KONG_DATABASE: "off"
+      KONG_DECLARATIVE_CONFIG: /var/lib/kong/kong.yml
+      KONG_DNS_RESOLVER: 127.0.0.11
+      KONG_NGINX_PROXY_PROXY_SET_HEADER: "X-Forwarded-Proto http"
+      KONG_NGINX_PROXY_PROXY_SET_HEADER: "X-Real-IP $remote_addr"
+    volumes:
+      - ./kong.yml:/var/lib/kong/kong.yml:ro
+    networks:
+      - sovalune-network
+
+  # ============================================================
+  # Sovalune Core — Rust Backend (placeholder)
+  # ============================================================
+  # sovalune-core:
+  #   build:
+  #     context: ../sovalune-core
+  #     dockerfile: Dockerfile
+  #   container_name: sovalune-core
+  #   restart: unless-stopped
+  #   ports:
+  #     - "8080:8080"
+  #   environment:
+  #     SOVALUNE_STORAGE_URL: postgres://sovalune:sovalune_dev_password@postgres:5432/sovalune
+  #     SOVALUNE_NATS_URL: nats://nats:4222
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #     nats:
+  #       condition: service_healthy
+
+  # ============================================================
+  # Sovalune Frontend — Next.js (placeholder)
+  # ============================================================
+  # sovalune-frontend:
+  #   build:
+  #     context: ../sovalune-frontend
+  #     dockerfile: Dockerfile
+  #   container_name: sovalune-frontend
+  #   restart: unless-stopped
+  #   ports:
+  #     - "3001:3000"
+  #   environment:
+  #     NEXT_PUBLIC_SOVALUNE_API_URL: http://localhost:8080
+
+volumes:
+  postgres_data:
+  nats_data:
+  storage_data:
+
+networks:
+  sovalune-network:
+    driver: bridge

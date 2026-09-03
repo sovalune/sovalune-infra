@@ -30,10 +30,6 @@ services:
       - sovalune-network
 
   # ============================================================
-  # Sovalune Vector — pgvector extension (included in postgres image)
-  # ============================================================
-
-  # ============================================================
   # NATS — Message bus with JetStream
   # ============================================================
   nats:
@@ -55,7 +51,7 @@ services:
       - sovalune-network
 
   # ============================================================
-  # Sovalune Studio — Supabase Studio (фиолетовая тема)
+  # Sovalune Studio — Supabase Studio
   # ============================================================
   studio:
     image: supabase/studio:latest
@@ -73,7 +69,7 @@ services:
       - sovalune-network
 
   # ============================================================
-  # Sovalune API Gateway — PostgREST (Supabase Storage API)
+  # Sovalune API Gateway — PostgREST
   # ============================================================
   api:
     image: postgrest/postgrest:v12.0.2
@@ -119,7 +115,7 @@ services:
       - sovalune-network
 
   # ============================================================
-  # Sovalune Auth — GoTrue (Supabase Auth, опционально)
+  # Sovalune Auth — GoTrue
   # ============================================================
   auth:
     image: supabase/gotrue:v2.158.1
@@ -146,7 +142,7 @@ services:
       - sovalune-network
 
   # ============================================================
-  # Kong — API Gateway (Supabase)
+  # Kong — API Gateway
   # ============================================================
   kong:
     image: kong:2.8.1
@@ -167,38 +163,49 @@ services:
       - sovalune-network
 
   # ============================================================
-  # Sovalune Core — Rust Backend (placeholder)
+  # Sovalune Core — Rust Backend
   # ============================================================
-  # sovalune-core:
-  #   build:
-  #     context: ../sovalune-core
-  #     dockerfile: Dockerfile
-  #   container_name: sovalune-core
-  #   restart: unless-stopped
-  #   ports:
-  #     - "8080:8080"
-  #   environment:
-  #     SOVALUNE_STORAGE_URL: postgres://sovalune:sovalune_dev_password@postgres:5432/sovalune
-  #     SOVALUNE_NATS_URL: nats://nats:4222
-  #   depends_on:
-  #     postgres:
-  #       condition: service_healthy
-  #     nats:
-  #       condition: service_healthy
+  sovalune-core:
+    build:
+      context: ../sovalune-core
+      dockerfile: Dockerfile
+    container_name: sovalune-core
+    restart: unless-stopped
+    ports:
+      - "8090:8090"
+      - "8091:8091"
+    environment:
+      SOVALUNE_STORAGE_URL: postgres://sovalune:sovalune_dev_password@postgres:5432/sovalune
+      SOVALUNE_NATS_URL: nats://nats:4222
+      SOVALUNE_SERVER_HOST: 0.0.0.0
+      SOVALUNE_SERVER_PORT: 8090
+      SOVALUNE_WS_PORT: 8091
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+    networks:
+      - sovalune-network
 
   # ============================================================
-  # Sovalune Frontend — Next.js (placeholder)
+  # Sovalune Frontend — Next.js
   # ============================================================
-  # sovalune-frontend:
-  #   build:
-  #     context: ../sovalune-frontend
-  #     dockerfile: Dockerfile
-  #   container_name: sovalune-frontend
-  #   restart: unless-stopped
-  #   ports:
-  #     - "3001:3000"
-  #   environment:
-  #     NEXT_PUBLIC_SOVALUNE_API_URL: http://localhost:8080
+  sovalune-frontend:
+    build:
+      context: ../sovalune-frontend
+      dockerfile: Dockerfile
+    container_name: sovalune-frontend
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8090
+      NEXT_PUBLIC_WS_URL: ws://localhost:8091
+    depends_on:
+      - sovalune-core
+    networks:
+      - sovalune-network
 
 volumes:
   postgres_data:

@@ -5,7 +5,7 @@ services:
   # PostgreSQL + pgvector
   # ============================================================
   postgres:
-    image: supabase/postgres:15.6.1
+    image: pgvector/pgvector:pg16
     container_name: sovalune-postgres
     restart: unless-stopped
     ports:

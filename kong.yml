@@ -1,31 +1,53 @@
-_format_version: "1.1"
-_transform: true
-
-consumers:
-  - username: anon
-    keyauth:
-      - key: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjogImFub24iLCAiaXNzIjogInN1cGFiYXNlIiwiaWF0IjogMTY5MDAwMDAwMH0.placeholder
-  - username: service_role
-    keyauth:
-      - key: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjogInNlcnZpY2Vfcm9sZSIsICJpc3MiOiAic3VwYWJhc2UiLCAiaWF0IjogMTY5MDAwMDAwMH0.placeholder
-
-acls:
-  - consumer: anon
-    group: anon
-  - consumer: service_role
-    group: admin
+_format_version: "3.0"
 
 services:
-  - name: auth-v1-open
-    url: http://auth:9999/verify
+  - name: sovalune-api
+    url: http://sovalune-core:8090
     routes:
-      - name: auth-v1-open
+      - name: sovalune-api-health
         paths:
-          - /auth/v1/verify
-        strip_path: true
+          - /health
+        strip_path: false
         methods:
-          - POST
           - GET
+      - name: sovalune-api-v1
+        paths:
+          - /api/v1/
+        strip_path: false
+        plugins:
+          - name: cors
+            config:
+              origins:
+                - "*"
+              methods:
+                - GET
+                - POST
+                - PUT
+                - PATCH
+                - DELETE
+                - OPTIONS
+              headers:
+                - Authorization
+                - Content-Type
+                - Accept
+      - name: sovalune-api-ws
+        paths:
+          - /ws/
+        strip_path: false
+        plugins:
+          - name: cors
+            config:
+              origins:
+                - "*"
+              methods:
+                - GET
+                - OPTIONS
+              headers:
+                - Authorization
+                - Content-Type
+                - Upgrade
+                - Connection
+
   - name: auth-v1
     url: http://auth:9999/
     routes:
@@ -33,10 +55,7 @@ services:
         paths:
           - /auth/v1/
         strip_path: true
-        plugins:
-          - name: key-auth
-            config:
-              hide_credentials: false
+
   - name: rest-v1
     url: http://api:3000/
     routes:
@@ -44,10 +63,7 @@ services:
         paths:
           - /rest/v1/
         strip_path: true
-        plugins:
-          - name: key-auth
-            config:
-              hide_credentials: false
+
   - name: storage-v1
     url: http://storage:5000/
     routes:
@@ -55,7 +71,24 @@ services:
         paths:
           - /storage/v1/
         strip_path: true
-        plugins:
-          - name: key-auth
-            config:
-              hide_credentials: false
+
+plugins:
+  - name: cors
+    config:
+      origins:
+        - "*"
+      methods:
+        - GET
+        - POST
+        - PUT
+        - PATCH
+        - DELETE
+        - OPTIONS
+      headers:
+        - Authorization
+        - Content-Type
+        - Accept
+      exposed_headers:
+        - X-Request-Id
+      max_age: 3600
+      credentials: true

@@ -2,7 +2,7 @@ version: "3.8"
 
 services:
   # ============================================================
-  # Sovalune Storage — Supabase Postgres + pgvector
+  # PostgreSQL + pgvector
   # ============================================================
   postgres:
     image: supabase/postgres:15.6.1
@@ -30,7 +30,7 @@ services:
       - sovalune-network
 
   # ============================================================
-  # NATS — Message bus with JetStream
+  # NATS with JetStream
   # ============================================================
   nats:
     image: nats:2.10-alpine
@@ -51,7 +51,68 @@ services:
       - sovalune-network
 
   # ============================================================
-  # Sovalune Studio — Supabase Studio
+  # Sovalune Core — Rust Backend
+  # ============================================================
+  sovalune-core:
+    build:
+      context: ../sovalune-core
+      dockerfile: Dockerfile
+    container_name: sovalune-core
+    restart: unless-stopped
+    ports:
+      - "8090:8090"
+      - "8091:8091"
+    environment:
+      SOVALUNE_STORAGE_URL: postgres://sovalune:sovalune_dev_password@postgres:5432/sovalune
+      SOVALUNE_NATS_URL: nats://nats:4222
+      SOVALUNE_SERVER_HOST: 0.0.0.0
+      SOVALUNE_SERVER_PORT: 8090
+      SOVALUNE_WS_PORT: 8091
+      RUST_LOG: sovalune_server=debug,tower_http=debug
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8090/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - sovalune-network
+
+  # ============================================================
+  # Sovalune Frontend — Next.js
+  # ============================================================
+  sovalune-frontend:
+    build:
+      context: ../sovalune-frontend
+      dockerfile: Dockerfile
+    container_name: sovalune-frontend
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: http://sovalune-core:8090
+      NEXT_PUBLIC_WS_HOST: sovalune-core
+      NEXT_PUBLIC_WS_PORT: "8091"
+      NODE_ENV: production
+    depends_on:
+      sovalune-core:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - sovalune-network
+
+  # ============================================================
+  # Studio — Supabase Studio
   # ============================================================
   studio:
     image: supabase/studio:latest
@@ -65,11 +126,14 @@ services:
       SUPABASE_URL: http://localhost:8000
       SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjogImFub24iLCAiaXNzIjogInN1cGFiYXNlIiwiaWF0IjogMTY5MDAwMDAwMH0.placeholder
       SUPABASE_SERVICE_ROLE_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjogInNlcnZpY2Vfcm9sZSIsICJpc3MiOiAic3VwYWJhc2UiLCAiaWF0IjogMTY5MDAwMDAwMH0.placeholder
+    depends_on:
+      postgres:
+        condition: service_healthy
     networks:
       - sovalune-network
 
   # ============================================================
-  # Sovalune API Gateway — PostgREST
+  # PostgREST — REST API for PostgreSQL
   # ============================================================
   api:
     image: postgrest/postgrest:v12.0.2
@@ -89,7 +153,7 @@ services:
       - sovalune-network
 
   # ============================================================
-  # Sovalune Storage — Object Storage API
+  # Storage API
   # ============================================================
   storage:
     image: supabase/storage-api:v1.11.13
@@ -115,7 +179,7 @@ services:
       - sovalune-network
 
   # ============================================================
-  # Sovalune Auth — GoTrue
+  # Auth — GoTrue
   # ============================================================
   auth:
     image: supabase/gotrue:v2.158.1
@@ -159,58 +223,19 @@ services:
       KONG_NGINX_PROXY_PROXY_SET_HEADER: "X-Real-IP $remote_addr"
     volumes:
       - ./kong.yml:/var/lib/kong/kong.yml:ro
-    networks:
-      - sovalune-network
-
-  # ============================================================
-  # Sovalune Core — Rust Backend
-  # ============================================================
-  sovalune-core:
-    build:
-      context: ../sovalune-core
-      dockerfile: Dockerfile
-    container_name: sovalune-core
-    restart: unless-stopped
-    ports:
-      - "8090:8090"
-      - "8091:8091"
-    environment:
-      SOVALUNE_STORAGE_URL: postgres://sovalune:sovalune_dev_password@postgres:5432/sovalune
-      SOVALUNE_NATS_URL: nats://nats:4222
-      SOVALUNE_SERVER_HOST: 0.0.0.0
-      SOVALUNE_SERVER_PORT: 8090
-      SOVALUNE_WS_PORT: 8091
     depends_on:
-      postgres:
+      sovalune-core:
         condition: service_healthy
-      nats:
-        condition: service_healthy
-    networks:
-      - sovalune-network
-
-  # ============================================================
-  # Sovalune Frontend — Next.js
-  # ============================================================
-  sovalune-frontend:
-    build:
-      context: ../sovalune-frontend
-      dockerfile: Dockerfile
-    container_name: sovalune-frontend
-    restart: unless-stopped
-    ports:
-      - "3001:3000"
-    environment:
-      NEXT_PUBLIC_API_URL: http://localhost:8090
-      NEXT_PUBLIC_WS_URL: ws://localhost:8091
-    depends_on:
-      - sovalune-core
     networks:
       - sovalune-network
 
 volumes:
   postgres_data:
+    driver: local
   nats_data:
+    driver: local
   storage_data:
+    driver: local
 
 networks:
   sovalune-network:

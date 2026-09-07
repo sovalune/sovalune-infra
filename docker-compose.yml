@@ -51,6 +51,33 @@ services:
       - sovalune-network
 
   # ============================================================
+  # Sovalune Model Runtime — C++/CUDA Inference Server
+  # ============================================================
+  sovalune-model-runtime:
+    build:
+      context: ../sovalune-model-runtime
+      dockerfile: Dockerfile
+    container_name: sovalune-model-runtime
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      SOVALUNE_MODEL_PATH: ${SOVALUNE_MODEL_PATH:-}
+      SOVALUNE_RUNTIME_MODE: ${SOVALUNE_RUNTIME_MODE:-cpu}
+      SOVALUNE_NATS_URL: nats://nats:4222
+      SOVALUNE_REST_PORT: "8080"
+    volumes:
+      - ./models:/models:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - sovalune-network
+
+  # ============================================================
   # Sovalune Core — Rust Backend
   # ============================================================
   sovalune-core:
@@ -68,16 +95,20 @@ services:
       SOVALUNE_SERVER_HOST: 0.0.0.0
       SOVALUNE_SERVER_PORT: 8090
       SOVALUNE_WS_PORT: 8091
-      SOVALUNE_MODEL_BACKEND: ${SOVALUNE_MODEL_BACKEND:-openai}
-      SOVALUNE_MODEL_API_URL: ${SOVALUNE_MODEL_API_URL:-https://api.openai.com/v1}
+      SOVALUNE_MODEL_BACKEND: ${SOVALUNE_MODEL_BACKEND:-sovalune_runtime}
+      SOVALUNE_MODEL_API_URL: http://sovalune-model-runtime:8080
       SOVALUNE_MODEL_API_KEY: ${SOVALUNE_MODEL_API_KEY:-}
-      SOVALUNE_MODEL_NAME: ${SOVALUNE_MODEL_NAME:-gpt-4o}
+      SOVALUNE_MODEL_NAME: ${SOVALUNE_MODEL_NAME:-}
       SOVALUNE_MODEL_TIMEOUT_SECS: ${SOVALUNE_MODEL_TIMEOUT_SECS:-120}
+      SOVALUNE_RUNTIME_URL: http://sovalune-model-runtime:8080
+      SOVALUNE_RUNTIME_MODE: ${SOVALUNE_RUNTIME_MODE:-cpu}
       RUST_LOG: sovalune_server=debug,tower_http=debug
     depends_on:
       postgres:
         condition: service_healthy
       nats:
+        condition: service_healthy
+      sovalune-model-runtime:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8090/health/live"]
